@@ -12,7 +12,7 @@ import tkinter as tk
 from tkinter import simpledialog, messagebox
 
 try:
-    import RPi.GPIO as GPIO
+    import pigpio
     GPIO_AVAILABLE = True
 except ImportError:
     GPIO_AVAILABLE = False
@@ -114,12 +114,14 @@ class RaceController:
         if self.running:
             self.stop_race()
 
-    def trigger_lane(self, lane):
+    def trigger_lane(self, lane, level=None):
+        # If a level was provided by the GPIO callback, callers will pass it as
+        # the second argument. Here we accept an optional `level` parameter
+        # (0 = LOW, 1 = HIGH) and ignore triggers that are not LOW.
+        # The keyboard-trigger paths call this without a level.
         inputstate = None
-        if GPIO_AVAILABLE:
-            inputstate = GPIO.input(self.lane_io_in[lane])
-            if inputstate == GPIO.HIGH:
-                return  # Ignore if not LOW
+        if level is not None and level != 0:
+            return
         
         now = time.time()
         if now - self.last_trigger[lane] < DEBOUNCE_SECONDS:
@@ -240,7 +242,16 @@ class RaceUI:
 
 
     def on_exit(self, event=None):
-        """Close the Tkinter window."""
+        """Close the Tkinter window and cleanup pigpio if in use."""
+        try:
+            if hasattr(self, 'cb1'):
+                self.cb1.cancel()
+            if hasattr(self, 'cb2'):
+                self.cb2.cancel()
+            if hasattr(self, 'pi') and self.pi is not None:
+                self.pi.stop()
+        except Exception:
+            pass
         self.root.destroy()
     
     def resize(self, event):
@@ -377,15 +388,21 @@ class RaceUI:
                 else:
                     self.extra_labels[i][1].config(text="Avg ----- s")
         elif event == "power_off" and GPIO_AVAILABLE:
-            GPIO.output(GPIO_LANE1_FWD, GPIO.LOW)
-            GPIO.output(GPIO_LANE1_BWD, GPIO.LOW)
-            GPIO.output(GPIO_LANE2_FWD, GPIO.LOW)
-            GPIO.output(GPIO_LANE2_BWD, GPIO.LOW)
+            try:
+                self.pi.write(GPIO_LANE1_FWD, 0)
+                self.pi.write(GPIO_LANE1_BWD, 0)
+                self.pi.write(GPIO_LANE2_FWD, 0)
+                self.pi.write(GPIO_LANE2_BWD, 0)
+            except Exception:
+                pass
         elif event == "power_on" and GPIO_AVAILABLE:
-            GPIO.output(GPIO_LANE1_FWD, GPIO.HIGH)
-            GPIO.output(GPIO_LANE2_FWD, GPIO.HIGH)
-            GPIO.output(GPIO_LANE1_BWD, GPIO.LOW)
-            GPIO.output(GPIO_LANE2_BWD, GPIO.LOW)
+            try:
+                self.pi.write(GPIO_LANE1_FWD, 1)
+                self.pi.write(GPIO_LANE2_FWD, 1)
+                self.pi.write(GPIO_LANE1_BWD, 0)
+                self.pi.write(GPIO_LANE2_BWD, 0)
+            except Exception:
+                pass
 
     def power_on(self):
         self.handle_event("power_on")
@@ -395,18 +412,28 @@ class RaceUI:
 
     # ---------------- GPIO ----------------
     def setup_gpio(self):
-        GPIO.setmode(GPIO.BCM)
-        GPIO.setup(GPIO_LANE1_IN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-        GPIO.setup(GPIO_LANE2_IN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-        GPIO.setup(GPIO_LANE1_FWD, GPIO.OUT)
-        GPIO.setup(GPIO_LANE1_BWD, GPIO.OUT)
-        GPIO.setup(GPIO_LANE2_FWD, GPIO.OUT)
-        GPIO.setup(GPIO_LANE2_BWD, GPIO.OUT)
+        # Initialize connection to pigpio daemon
+        self.pi = pigpio.pi()
+        if not self.pi.connected:
+            print("pigpio daemon not available; disabling GPIO")
+            return
 
-        GPIO.add_event_detect(GPIO_LANE1_IN, GPIO.FALLING,
-                              callback=lambda ch: self.controller.trigger_lane(0))
-        GPIO.add_event_detect(GPIO_LANE2_IN, GPIO.FALLING,
-                              callback=lambda ch: self.controller.trigger_lane(1))
+        # Configure input pins with pull-ups and outputs
+        self.pi.set_mode(GPIO_LANE1_IN, pigpio.INPUT)
+        self.pi.set_mode(GPIO_LANE2_IN, pigpio.INPUT)
+        self.pi.set_pull_up_down(GPIO_LANE1_IN, pigpio.PUD_UP)
+        self.pi.set_pull_up_down(GPIO_LANE2_IN, pigpio.PUD_UP)
+
+        self.pi.set_mode(GPIO_LANE1_FWD, pigpio.OUTPUT)
+        self.pi.set_mode(GPIO_LANE1_BWD, pigpio.OUTPUT)
+        self.pi.set_mode(GPIO_LANE2_FWD, pigpio.OUTPUT)
+        self.pi.set_mode(GPIO_LANE2_BWD, pigpio.OUTPUT)
+
+        # Register falling-edge callbacks that forward the level to the controller
+        self.cb1 = self.pi.callback(GPIO_LANE1_IN, pigpio.FALLING_EDGE,
+                                    lambda gpio, level, tick: self.controller.trigger_lane(0, level))
+        self.cb2 = self.pi.callback(GPIO_LANE2_IN, pigpio.FALLING_EDGE,
+                                    lambda gpio, level, tick: self.controller.trigger_lane(1, level))
 
 # ---------------- Main ----------------
 if __name__ == "__main__":
