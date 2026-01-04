@@ -96,6 +96,7 @@ class RaceController:
 
     def start_heat(self):
         self.remaining_heats -= 1
+        self.ignore_first_pass = [True, True]
         # Swap lanes for next heat
         self.laps = [self.laps[1], self.laps[0]]
         self.lap_times = [self.lap_times[1], self.lap_times[0]]
@@ -116,7 +117,6 @@ class RaceController:
         self.best_lap_times = [None, None]
         self.best_lap = [None, None]
         self.avg_lap_times = [None, None]
-        self.ignore_first_pass = [True, True]
         self.start_heat()
 
     def stop_heat(self):
@@ -125,7 +125,7 @@ class RaceController:
             self.ui_callback("power_off")
             if (self.remaining_heats > 0):
                 messagebox.showinfo("Heat finished", f"Heat finished. SWAP LANES AND MOVE CARS TO START POSITION! Remaining heats: {self.remaining_heats}")
-                self.start_heat()   
+                self.ui_callback("next_heat")
             else:
                 self.race_running = False
                 resulting_laps = [self.laps[0] + self.add_travel[0], 
@@ -328,7 +328,7 @@ class RaceUI:
         return
 
     def bind_keys(self):
-        self.root.bind("<Shift-space>", lambda e: self.start_sequence())
+        self.root.bind("<Shift-space>", lambda e: self.start_sequence(self.controller.start_race))
         self.root.bind("<Control-r>", lambda e: self.controller.reset_stats())
         self.root.bind("R", lambda e: self.set_laps())
         self.root.bind("L", lambda e: self.set_laps())
@@ -345,13 +345,15 @@ class RaceUI:
             self.root.bind("1", lambda e: self.controller.trigger_lane(0))
             self.root.bind("2", lambda e: self.controller.trigger_lane(1))
 
-    def start_sequence(self):
+    def start_sequence(self, start_race_func):
         self.handle_event("power_off")
         def seq():
-            self.show_overlay()
-        threading.Thread(target=seq, daemon=True).start()
+            self.show_overlay(start_race_func)
+        t = threading.Thread(target=seq, daemon=True).start()
+        t.join()
+        start_race_func()
 
-    def show_overlay(self):
+    def show_overlay(self, start_race_func):
         # Ensure geometry info is available
         self.root.update_idletasks()
 
@@ -413,8 +415,6 @@ class RaceUI:
                 self.canvas.itemconfig(self.circles[index], fill="red")
             # Close overlay after 200 ms
             self.handle_event("power_on")
-            self.controller.ignore_first_pass = [True, True]
-            self.controller.start_race()
             self.overlay.after(200, self.overlay.destroy)
             
     def set_laps(self):
@@ -467,7 +467,8 @@ class RaceUI:
                     self.extra_labels[i][2].config(text=f"Add {self.controller.add_travel[i] * 100:.2f}")
                 else:
                     self.extra_labels[i][2].config(text="Add -----")
-
+        elif event == "next_heat":
+            self.start_sequence(self.controller.start_heat)
         elif event == "power_off" and GPIO_AVAILABLE:
             GPIO.output(GPIO_LANE1_FWD, GPIO.LOW)
             GPIO.output(GPIO_LANE1_BWD, GPIO.LOW)
