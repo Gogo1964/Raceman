@@ -286,7 +286,7 @@ class RaceUI:
                 text="----- s (---)",
                 font=("Helvetica", 18, "bold"),
                 width=12,   # ensures same size
-                height=2,
+                height=1,
                 relief="solid",
                 fg="green"
             )
@@ -298,7 +298,7 @@ class RaceUI:
                 text="Avg ----- s",
                 font=("Helvetica", 18),
                 width=12,   # ensures same size
-                height=2,
+                height=1,
                 relief="solid",
                 fg="orange"
             )
@@ -310,7 +310,7 @@ class RaceUI:
                 text="Add -----",
                 font=("Helvetica", 12),
                 width=12,   # ensures same size
-                height=2,
+                height=1,
                 fg="red"
             )
             lbl.pack(pady=5)
@@ -324,7 +324,8 @@ class RaceUI:
         self.root.destroy()
     
     def resize(self, event):
-        print("New size is: {}x{}".format(event.width, event.height))
+        # print("New size is: {}x{}".format(event.width, event.height))
+        return
 
     def bind_keys(self):
         self.root.bind("<Shift-space>", lambda e: self.start_sequence())
@@ -466,7 +467,7 @@ class RaceUI:
                     self.extra_labels[i][2].config(text=f"Add {self.controller.add_travel[i] * 100:.2f}")
                 else:
                     self.extra_labels[i][2].config(text="Add -----")
-                    
+
         elif event == "power_off" and GPIO_AVAILABLE:
             GPIO.output(GPIO_LANE1_FWD, GPIO.LOW)
             GPIO.output(GPIO_LANE1_BWD, GPIO.LOW)
