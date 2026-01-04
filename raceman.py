@@ -406,7 +406,7 @@ class RaceUI:
                 self.canvas.itemconfig(self.circles[index], fill="red")
 
             self.current_col += 1
-            self.overlay.after(1000, self.fill_next_column)
+            self.overlay.after(1000, self.fill_next_column, start_race_func)
         else:
             for r in range(self.rows):
                 index = r * self.cols + self.current_col
