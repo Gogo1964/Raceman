@@ -305,6 +305,17 @@ class RaceUI:
             lbl.pack(pady=5)
             extras.append(lbl)
 
+            lbl = tk.Label(
+                extras_frame,
+                text="Add -----",
+                font=("Helvetica", 12),
+                width=12,   # ensures same size
+                height=2,
+                fg="red"
+            )
+            lbl.pack(pady=5)
+            extras.append(lbl)
+
             self.extra_labels.append(extras)
 
 
@@ -451,6 +462,11 @@ class RaceUI:
                     self.extra_labels[i][1].config(text=f"Avg {self.controller.avg_lap_times[i] / 1000.0:.3f} s")
                 else:
                     self.extra_labels[i][1].config(text="Avg ----- s")
+                if self.controller.add_travel[i] is not None:
+                    self.extra_labels[i][2].config(text=f"Add {self.controller.add_travel[i] * 100:.2f}")
+                else:
+                    self.extra_labels[i][2].config(text="Add -----")
+                    
         elif event == "power_off" and GPIO_AVAILABLE:
             GPIO.output(GPIO_LANE1_FWD, GPIO.LOW)
             GPIO.output(GPIO_LANE1_BWD, GPIO.LOW)
