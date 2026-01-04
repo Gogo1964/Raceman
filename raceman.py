@@ -29,8 +29,9 @@ GPIO_LANE2_FWD = 27
 DEBOUNCE_SECONDS = 1.0
 CONFIG_FILE = "race_config.json"
 DEFAULT_LAPS = 10
-DEFAULT_TIME_MIN = 5
+DEFAULT_TIME_SECS = 300
 DEF_MINIMUM_LAP_TIME_MS = 6000
+DEF_MAXIMUM_LAP_TIME_MS = 30000
 COUNT_SAVED_LAPS = 5
 
 # ---------------- Hilfsfunktionen ----------------
@@ -44,19 +45,6 @@ class RaceController:
         self.reset()
         self.load_config()
 
-    def reset(self):
-        self.laps = [0, 0]
-        self.trigger_events = [0, 0]
-        self.last_trigger = [0, 0]
-        self.lap_times = [[], []]
-        self.last_lap_timestamp = [None, None]
-        self.best_lap_times = [None, None]
-        self.best_lap = [None, None]
-        self.avg_lap_times = [None, None]
-        self.running = False
-        self.ignore_first_pass = [False, False]
-        self.lane_io_in = [GPIO_LANE1_IN, GPIO_LANE2_IN]
-
     def reset_stats(self):
         self.reset()
         self.ui_callback("update")  
@@ -67,52 +55,107 @@ class RaceController:
                 cfg = json.load(f)
                 self.mode = cfg.get("mode", "laps")
                 self.target_laps = cfg.get("laps", DEFAULT_LAPS)
-                self.target_time_min = cfg.get("time", DEFAULT_TIME_MIN)
+                self.target_time_secs = cfg.get("time", DEFAULT_TIME_SECS)
+                self.target_heats = cfg.get("heats", 2)
                 self.min_lap_time_ms = cfg.get("min_lap_time_ms", DEF_MINIMUM_LAP_TIME_MS)
+                self.max_lap_time_ms = cfg.get("max_lap_time_ms", DEF_MAXIMUM_LAP_TIME_MS)
         except Exception:
             self.mode = "laps"
             self.target_laps = DEFAULT_LAPS
-            self.target_time_min = DEFAULT_TIME_MIN
+            self.target_time_secs = DEFAULT_TIME_SECS
+            self.target_heats = 2
+            self.min_lap_time_ms = DEF_MINIMUM_LAP_TIME_MS
+            self.max_lap_time_ms = DEF_MAXIMUM_LAP_TIME_MS
+
 
     def save_config(self):
         with open(CONFIG_FILE, "w") as f:
             json.dump({
                 "mode": self.mode,
                 "laps": self.target_laps,
-                "time": self.target_time_min,
-                "min_lap_time_ms": self.min_lap_time_ms
+                "time_per_heat": self.target_time_secs,
+                "heats": self.target_heats,
+                "min_lap_time_ms": self.min_lap_time_ms,
+                "max_lap_time_ms": self.max_lap_time_ms
             }, f)
+
+    def reset(self):
+        self.laps = [0, 0]
+        self.trigger_events = [0, 0]
+        self.last_trigger = [0, 0]
+        self.lap_times = [[], []]
+        self.last_lap_timestamp = [None, None]
+        self.best_lap_times = [None, None]
+        self.best_lap = [None, None]
+        self.avg_lap_times = [None, None]
+        self.stop_pending = [False, False]
+        self.race_running = False
+        self.remaining_heats = 0
+        self.ignore_first_pass = [False, False]
+        self.lane_io_in = [GPIO_LANE1_IN, GPIO_LANE2_IN]
+
+    def start_heat(self):
+        self.remaining_heats -= 1
+        # Swap lanes for next heat
+        self.laps = [self.laps[1], self.laps[0]]
+        self.lap_times = [self.lap_times[1], self.lap_times[0]]
+        self.best_lap_times = [self.best_lap_times[1], self.best_lap_times[0]]
+        self.best_lap = [self.best_lap[1], self.best_lap[0]]
+        self.avg_lap_times = [self.avg_lap_times[1], self.avg_lap_times[0]]
+        self.ui_callback("update")
+        if self.mode == "time":
+            threading.Thread(target=self._time_race_monitor, daemon=True).start()
 
     def start_race(self):
         self.reset()
-        self.running = True
-        self.start_time = time.time()
+        self.race_running = True
+        self.remaining_heats = self.target_heats
         self.laps = [0, 0]
+        self.add_travel = [0, 0]
         self.lap_times = [[], []]
         self.best_lap_times = [None, None]
         self.best_lap = [None, None]
         self.avg_lap_times = [None, None]
         self.ignore_first_pass = [True, True]
-        self.ui_callback("update")
-        if self.mode == "time":
-            threading.Thread(target=self._time_race_monitor, daemon=True).start()
+        self.start_heat()
+
+    def stop_heat(self):
+        if self.race_running:
+            print("Heat finished")
+            self.ui_callback("power_off")
+            if (self.remaining_heats > 0):
+                messagebox.showinfo("Heat finished", f"Heat finished. SWAP LANES AND MOVE CARS TO START POSITION! Remaining heats: {self.remaining_heats}")
+                self.start_heat()   
+            else:
+                self.race_running = False
+                resulting_laps = [self.laps[0] + self.add_travel[0], 
+                                  self.laps[1] + self.add_travel[1]]
+                if (resulting_laps[0] > resulting_laps[1]):
+                    winner = f"Lane 1 wins! {(resulting_laps[0] / 100):.2f} to {(resulting_laps[1] / 100):.2f}"
+                elif resulting_laps[1] > resulting_laps[0]:
+                    winner = f"Lane 2 wins! {(resulting_laps[1] / 100):.2f} to {(resulting_laps[0] / 100):.2f}"
+                else:
+                    winner = "It's a tie!"
+                messagebox.showinfo("Race finished", f"All heats finished. {winner}")
 
     def stop_race(self):
-        if self.running:
-            self.running = False
+        if self.race_running:
+            self.race_running = False
             print("Race finished")
             self.ui_callback("power_off")
 
     def cancel_race(self):
-        if self.running:
-            self.running = False
+        if self.race_running:
+            self.race_running = False
             print("Race canceled")
             self.ui_callback("power_off")
 
     def _time_race_monitor(self):
-        time.sleep(self.target_time_min * 60)
-        if self.running:
-            self.stop_race()
+        time.sleep(self.target_time_secs)
+        if self.race_running:
+            self.stop_pending[0] = True
+            self.stop_pending[1] = True
+            self.stop_pending_since = current_millis()
 
     def trigger_lane(self, lane):
         inputstate = None
@@ -131,24 +174,50 @@ class RaceController:
             self.ignore_first_pass[lane] = False
             return
 
-        self.laps[lane] += 1
-        print(f"Lane {lane + 1} triggered, state {inputstate}, laps {self.laps[lane]}")
+        finished_lap = self.laps[lane] + 1
+        print(f"Lane {lane + 1} triggered, state {inputstate}, laps {finished_lap}")
+
         now_ms = current_millis()
+
+        if self.stop_pending[lane]:
+            self.stop_pending[lane] = False
+            if (self.last_lap_timestamp[lane] is not None
+                and self.avg_lap_times[lane] is not None
+                and self.stop_pending_since is not None):
+                diff_ms = now_ms - self.stop_pending_since
+                est_travel = (self.avg_lap_times[lane] - diff_ms) / self.avg_lap_times[lane]
+                if est_travel < 0:
+                    est_travel = 0
+                self.add_travel[lane] += est_travel              
+            else:
+                self.add_travel[lane] += 0
+
+            if lane == 0:
+                self.ui_callback("power_off_1")
+            elif lane == 1:
+                self.ui_callback("power_off_2")
+            if not any(self.stop_pending):
+                if self.remaining_heats > 0:
+                    self.stop_heat()
+                else:
+                    self.stop_race()
+            return
+        
         if self.last_lap_timestamp[lane] is not None:
             lap_time = now_ms - self.last_lap_timestamp[lane]
-            if lap_time >= self.min_lap_time_ms:
+            if lap_time >= self.min_lap_time_ms and lap_time <= self.max_lap_time_ms:
                 if self.best_lap_times[lane] is None or lap_time < self.best_lap_times[lane]:
                     self.best_lap_times[lane] = lap_time
-                    self.best_lap[lane] = self.laps[lane]
+                    self.best_lap[lane] = finished_lap
                 if self.avg_lap_times[lane] is None:
                     self.avg_lap_times[lane] = lap_time
                 else:
-                    n = self.laps[lane]
-                    self.avg_lap_times[lane] = ((self.avg_lap_times[lane] * (n - 1)) + lap_time) / n
+                    self.avg_lap_times[lane] = ((self.avg_lap_times[lane] * self.laps[lane]) 
+                                                + lap_time) / finished_lap
                 self.lap_times[lane].insert(0, lap_time)
                 self.lap_times[lane] = self.lap_times[lane][:COUNT_SAVED_LAPS]
         self.last_lap_timestamp[lane] = now_ms
-
+        self.laps[lane] = finished_lap
         self.ui_callback("update")
 
         if self.mode == "laps" and self.laps[lane] >= self.target_laps:
@@ -251,9 +320,9 @@ class RaceUI:
         self.root.bind("<Control-r>", lambda e: self.controller.reset_stats())
         self.root.bind("R", lambda e: self.set_laps())
         self.root.bind("L", lambda e: self.set_laps())
-        self.root.bind("T", lambda e: self.set_time())
-        self.root.bind("Z", lambda e: self.set_time())
-        self.root.bind("C", lambda e: self.set_min_lap_time())
+        self.root.bind("T", lambda e: self.set_timed_race())
+        self.root.bind("Z", lambda e: self.set_timed_race())
+        self.root.bind("C", lambda e: self.set_lap_times())
         self.root.bind("p", lambda e: self.power_on())
         self.root.bind("P", lambda e: self.power_off())
         self.root.bind("M", lambda e: self.toggle_mode())
@@ -343,17 +412,23 @@ class RaceUI:
             self.controller.mode = "laps"
             self.controller.save_config()
 
-    def set_time(self):
-        val = simpledialog.askinteger("Time mode", "Race time (minutes):", initialvalue=self.controller.target_time_min)
-        if val:
-            self.controller.target_time_min = val
+    def set_timed_race(self):
+        valt = simpledialog.askinteger("Time mode", "Heat time (seconds):", initialvalue=self.controller.target_time_secs)
+        valh = simpledialog.askinteger("Time mode", "Count heats:", initialvalue=self.controller.target_heats)
+        if valt:
+            self.controller.target_time_secs = valt
+            self.controller.target_heats = valh
             self.controller.mode = "time"
             self.controller.save_config()
 
-    def set_min_lap_time(self):
+    def set_lap_times(self):
         val = simpledialog.askinteger("Minimum Lap Time", "Minimum lap time (milliseconds):", initialvalue=self.controller.min_lap_time_ms)
         if val:
             self.controller.min_lap_time_ms = val
+            self.controller.save_config()
+        val = simpledialog.askinteger("Maximum Lap Time", "Maximum lap time (milliseconds):", initialvalue=self.controller.max_lap_time_ms)
+        if val:
+            self.controller.max_lap_time_ms = val
             self.controller.save_config()
 
     def toggle_mode(self):
@@ -379,6 +454,12 @@ class RaceUI:
         elif event == "power_off" and GPIO_AVAILABLE:
             GPIO.output(GPIO_LANE1_FWD, GPIO.LOW)
             GPIO.output(GPIO_LANE1_BWD, GPIO.LOW)
+            GPIO.output(GPIO_LANE2_FWD, GPIO.LOW)
+            GPIO.output(GPIO_LANE2_BWD, GPIO.LOW)
+        elif event == "power_off_1" and GPIO_AVAILABLE:
+            GPIO.output(GPIO_LANE1_FWD, GPIO.LOW)
+            GPIO.output(GPIO_LANE1_BWD, GPIO.LOW)
+        elif event == "power_off_2" and GPIO_AVAILABLE:
             GPIO.output(GPIO_LANE2_FWD, GPIO.LOW)
             GPIO.output(GPIO_LANE2_BWD, GPIO.LOW)
         elif event == "power_on" and GPIO_AVAILABLE:
