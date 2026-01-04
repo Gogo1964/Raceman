@@ -123,26 +123,23 @@ class RaceController:
         if self.race_running:
             print("Heat finished")
             self.ui_callback("power_off")
-            if (self.remaining_heats > 0):
-                messagebox.showinfo("Heat finished", f"Heat finished. SWAP LANES AND MOVE CARS TO START POSITION! Remaining heats: {self.remaining_heats}")
-                self.ui_callback("next_heat")
-            else:
-                self.race_running = False
-                resulting_laps = [self.laps[0] + self.add_travel[0], 
-                                  self.laps[1] + self.add_travel[1]]
-                if (resulting_laps[0] > resulting_laps[1]):
-                    winner = f"Lane 1 wins! {(resulting_laps[0] / 100):.2f} to {(resulting_laps[1] / 100):.2f}"
-                elif resulting_laps[1] > resulting_laps[0]:
-                    winner = f"Lane 2 wins! {(resulting_laps[1] / 100):.2f} to {(resulting_laps[0] / 100):.2f}"
-                else:
-                    winner = "It's a tie!"
-                messagebox.showinfo("Race finished", f"All heats finished. {winner}")
+            messagebox.showinfo("Heat finished", f"Heat finished. SWAP LANES AND MOVE CARS TO START POSITION! Remaining heats: {self.remaining_heats}")
+            self.ui_callback("next_heat")
 
     def stop_race(self):
         if self.race_running:
-            self.race_running = False
             print("Race finished")
             self.ui_callback("power_off")
+            self.race_running = False
+            resulting_laps = [self.laps[0] + self.add_travel[0], 
+                                self.laps[1] + self.add_travel[1]]
+            if (resulting_laps[0] > resulting_laps[1]):
+                winner = f"Lane 1 wins! {resulting_laps[0]:.2f} to {resulting_laps[1]:.2f}"
+            elif resulting_laps[1] > resulting_laps[0]:
+                winner = f"Lane 2 wins! {resulting_laps[1]:.2f} to {resulting_laps[0]:.2f}"
+            else:
+                winner = "It's a tie!"
+            messagebox.showinfo("Race finished", f"All heats finished. {winner}")
 
     def cancel_race(self):
         if self.race_running:
@@ -192,6 +189,8 @@ class RaceController:
             else:
                 self.add_travel[lane] += 0
 
+            self.ui_callback("update")
+
             if lane == 0:
                 self.ui_callback("power_off_1")
             elif lane == 1:
@@ -228,9 +227,10 @@ class RaceUI:
     def __init__(self, root):
         self.root = root
         self.root.title("RaceMan")
-        self.root.attributes('-fullscreen', True)
-        w, h = root.winfo_screenwidth(), root.winfo_screenheight()
-        root.geometry("%dx%d+0+0" % (w, h))
+        if GPIO_AVAILABLE:
+            self.root.attributes('-fullscreen', True)
+            w, h = root.winfo_screenwidth(), root.winfo_screenheight()
+            root.geometry("%dx%d+0+0" % (w, h))
 
         self.controller = RaceController(self.handle_event)
 
@@ -467,23 +467,36 @@ class RaceUI:
                 else:
                     self.extra_labels[i][2].config(text="Add -----")
         elif event == "next_heat":
+            print("Starting sequence for next heat")
             self.start_sequence(self.controller.start_heat)
-        elif event == "power_off" and GPIO_AVAILABLE:
-            GPIO.output(GPIO_LANE1_FWD, GPIO.LOW)
-            GPIO.output(GPIO_LANE1_BWD, GPIO.LOW)
-            GPIO.output(GPIO_LANE2_FWD, GPIO.LOW)
-            GPIO.output(GPIO_LANE2_BWD, GPIO.LOW)
-        elif event == "power_off_1" and GPIO_AVAILABLE:
-            GPIO.output(GPIO_LANE1_FWD, GPIO.LOW)
-            GPIO.output(GPIO_LANE1_BWD, GPIO.LOW)
-        elif event == "power_off_2" and GPIO_AVAILABLE:
-            GPIO.output(GPIO_LANE2_FWD, GPIO.LOW)
-            GPIO.output(GPIO_LANE2_BWD, GPIO.LOW)
-        elif event == "power_on" and GPIO_AVAILABLE:
-            GPIO.output(GPIO_LANE1_FWD, GPIO.HIGH)
-            GPIO.output(GPIO_LANE2_FWD, GPIO.HIGH)
-            GPIO.output(GPIO_LANE1_BWD, GPIO.LOW)
-            GPIO.output(GPIO_LANE2_BWD, GPIO.LOW)
+        elif event == "power_off":
+            if GPIO_AVAILABLE:
+                GPIO.output(GPIO_LANE1_FWD, GPIO.LOW)
+                GPIO.output(GPIO_LANE1_BWD, GPIO.LOW)
+                GPIO.output(GPIO_LANE2_FWD, GPIO.LOW)
+                GPIO.output(GPIO_LANE2_BWD, GPIO.LOW)
+            else:
+                print("Power off (GPIO not available)")
+        elif event == "power_off_1":
+            if GPIO_AVAILABLE:
+                GPIO.output(GPIO_LANE1_FWD, GPIO.LOW)
+                GPIO.output(GPIO_LANE1_BWD, GPIO.LOW)
+            else:
+                print("Power off lane 1 (GPIO not available)")
+        elif event == "power_off_2":
+            if GPIO_AVAILABLE:
+                GPIO.output(GPIO_LANE2_FWD, GPIO.LOW)
+                GPIO.output(GPIO_LANE2_BWD, GPIO.LOW)
+            else:
+                print("Power off lane 2 (GPIO not available)")
+        elif event == "power_on":
+            if GPIO_AVAILABLE:
+                GPIO.output(GPIO_LANE1_FWD, GPIO.HIGH)
+                GPIO.output(GPIO_LANE2_FWD, GPIO.HIGH)
+                GPIO.output(GPIO_LANE1_BWD, GPIO.LOW)
+                GPIO.output(GPIO_LANE2_BWD, GPIO.LOW)
+            else:
+                print("Power on (GPIO not available)")
 
     def power_on(self):
         self.handle_event("power_on")

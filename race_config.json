@@ -1,1 +1,1 @@
-{"mode": "laps", "laps": 5, "time": 1, "min_lap_time_ms": 2000}
+{"mode": "time", "laps": 5, "time_per_heat": 15, "heats": 4, "min_lap_time_ms": 500, "max_lap_time_ms": 30000}
