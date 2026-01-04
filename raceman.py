@@ -55,7 +55,7 @@ class RaceController:
                 cfg = json.load(f)
                 self.mode = cfg.get("mode", "laps")
                 self.target_laps = cfg.get("laps", DEFAULT_LAPS)
-                self.target_time_secs = cfg.get("time", DEFAULT_TIME_SECS)
+                self.target_time_secs = cfg.get("time_per_heat", DEFAULT_TIME_SECS)
                 self.target_heats = cfg.get("heats", 2)
                 self.min_lap_time_ms = cfg.get("min_lap_time_ms", DEF_MINIMUM_LAP_TIME_MS)
                 self.max_lap_time_ms = cfg.get("max_lap_time_ms", DEF_MAXIMUM_LAP_TIME_MS)
