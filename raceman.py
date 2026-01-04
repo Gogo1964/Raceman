@@ -349,7 +349,8 @@ class RaceUI:
         self.handle_event("power_off")
         def seq():
             self.show_overlay(start_race_func)
-        t = threading.Thread(target=seq).start()
+        t = threading.Thread(target=seq)
+        t.start()
         t.join()
         start_race_func()
 
