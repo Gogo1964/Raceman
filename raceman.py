@@ -349,11 +349,8 @@ class RaceUI:
         self.handle_event("power_off")
         def seq():
             self.show_overlay(start_race_func)
-        t = threading.Thread(target=seq, daemon=True)
-        t.start()
-        t.join()
-        start_race_func()
-
+        threading.Thread(target=seq, daemon=True).start()
+        
     def show_overlay(self, start_race_func):
         # Ensure geometry info is available
         self.root.update_idletasks()
@@ -400,9 +397,9 @@ class RaceUI:
 
         # Start fill animation
         self.current_col = 0
-        self.overlay.after(1000, self.fill_next_column)
+        self.overlay.after(1000, self.fill_next_column, start_race_func)
 
-    def fill_next_column(self):
+    def fill_next_column(self, start_race_func):
         if self.current_col < (self.cols - 1):
             for r in range(self.rows):
                 index = r * self.cols + self.current_col
@@ -417,6 +414,7 @@ class RaceUI:
             # Close overlay after 200 ms
             self.handle_event("power_on")
             self.overlay.after(200, self.overlay.destroy)
+            start_race_func()
             
     def set_laps(self):
         val = simpledialog.askinteger("Laps mode", "Count laps:", initialvalue=self.controller.target_laps)
