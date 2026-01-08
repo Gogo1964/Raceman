@@ -223,6 +223,10 @@ class RaceController:
         if self.mode == "laps" and self.laps[lane] >= self.target_laps:
             self.stop_race()
 
+    def add_lap(self, lane, count=1):
+        self.laps[lane] += count
+        self.ui_callback("update")
+
 # ---------------- Benutzeroberfläche ----------------
 class RaceUI:
     def __init__(self, root):
@@ -342,9 +346,12 @@ class RaceUI:
         self.root.bind("<Escape>", lambda e: self.controller.cancel_race())
         root.bind("<Shift-Escape>", self.on_exit)
         self.root.bind("<Configure>", self.resize)
-        if not GPIO_AVAILABLE:
-            self.root.bind("1", lambda e: self.controller.trigger_lane(0))
-            self.root.bind("2", lambda e: self.controller.trigger_lane(1))
+        self.root.bind("1", lambda e: self.controller.trigger_lane(0))
+        self.root.bind("2", lambda e: self.controller.trigger_lane(1))
+        self.root.bind("3", lambda e: self.controller.add_lap(0))
+        self.root.bind("4", lambda e: self.controller.add_lap(1))
+        self.root.bind("5", lambda e: self.controller.add_lap(0, -1))
+        self.root.bind("6", lambda e: self.controller.add_lap(1, -1))
 
     def start_sequence(self, start_race_func):
         self.handle_event("power_off")
