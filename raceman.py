@@ -93,6 +93,7 @@ class RaceController:
         self.remaining_heats = 0
         self.ignore_first_pass = [False, False]
         self.lane_io_in = [GPIO_LANE1_IN, GPIO_LANE2_IN]
+        self.add_travel = [0, 0]
 
     def start_heat(self):
         self.remaining_heats -= 1
