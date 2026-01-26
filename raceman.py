@@ -234,7 +234,8 @@ class RaceUI:
         self.root.title("RaceMan")
         if GPIO_AVAILABLE:
             self.root.attributes('-fullscreen', True)
-            w, h = root.winfo_screenwidth(), root.winfo_screenheight()
+            # w, h = root.winfo_screenwidth(), root.winfo_screenheight()
+            w, h = 800, 480
             root.geometry("%dx%d+0+0" % (w, h))
 
         self.controller = RaceController(self.handle_event)
